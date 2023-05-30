@@ -1,4 +1,4 @@
-# Detect colors in images - 20 x faster than Numpy 
+# Detect colors in images - 20 x faster than Numpy / 430 x faster than PIL
 
 ### pip install locate-pixelcolor-cpppragma
 
@@ -25,14 +25,14 @@ resus1 =  search_colors(pic=pic, colors=colors1, cpus=4)
 
 ####################################################################
 %timeit resus0 = search_colors(pic=pic, colors=colors0, cpus=5)
-23.4 ms ± 40.6 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+23.4 ms ± 40.6 µs per loop (mean ± std. dev. of 7 runs, 10 loops each) # 10.9 ms after last update
 
 b,g,r = pic[...,0],pic[...,1],pic[...,2]
 %timeit np.where(((b==255)&(g==255)&(r==255)))
 150 ms ± 209 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
 ####################################################################
 %timeit resus1 =  search_colors(pic=pic, colors=colors1, cpus=4)
-46.6 ms ± 988 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+46.6 ms ± 988 µs per loop (mean ± std. dev. of 7 runs, 10 loops each) # 43.6 after last update
 
 %timeit np.where(((b==66)&(g==71)&(r==69))|((b==62)&(g==67)&(r==65))|((b==144)&(g==155)&(r==153))|((b==52)&(g==57)&(r==55))|((b==127)&(g==138)&(r==136))|((b==53)&(g==58)&(r==56))|((b==51)&(g==56)&(r==54))|((b==32)&(g==27)&(r==18))|((b==24)&(g==17)&(r==8)))
 1 s ± 16.1 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
@@ -50,7 +50,45 @@ int create_id() {
     return value++;
     }
 
-extern "C" __declspec(dllexport) void colorsearch(char *pic, char *colors, int width, int totallengthpic, int totallengthcolor, int *outputx, int *outputy, int *lastresult)
+
+extern "C" __declspec(dllexport) void colorsearch(unsigned char *pic, unsigned char *colors, int width, int totallengthpic, int totallengthcolor, int *outputx, int *outputy, int *lastresult)
+{
+    value = 0;
+    int counter = 0;
+
+#pragma omp parallel reduction(+ : counter)
+    {
+
+
+        for (int i = 0; i <= totallengthcolor; i += 3)
+        {
+            int r = colors[i];
+            int g = colors[i + 1];
+            int b = colors[i + 2];
+#pragma omp for schedule(static)            
+            for (int j = 0; j <= totallengthpic; j += 3)
+            {
+                if ((r == pic[j]) && (g == pic[j + 1]) && (b == pic[j + 2]))
+                {
+
+#pragma omp critical
+                    {
+                        int dividend = j / 3;
+                        int quotient = dividend / width;
+                        int remainder = dividend % width;
+                        int upcounter = create_id();
+                        outputx[upcounter] = quotient;
+                        outputy[upcounter] = remainder;
+                        lastresult[0] = upcounter;
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+extern "C" __declspec(dllexport) void colorsearch2(unsigned char *pic, unsigned char *colors, int width, int totallengthpic, int totallengthcolor, int *outputx, int *outputy, int *lastresult)
 {
     value=0;
     int counter = 0;
@@ -62,12 +100,12 @@ extern "C" __declspec(dllexport) void colorsearch(char *pic, char *colors, int w
 #pragma omp for schedule(static)
         for (int i = 0; i <= totallengthcolor; i += 3)
         {
-            int r = i;
-            int g = i + 1;
-            int b = i + 2;
+        int r = colors[i];
+        int g = colors[i + 1];
+        int b = colors[i + 2];
             for (int j = 0; j <= totallengthpic; j += 3)
             {
-                if ((colors[r] == pic[j]) && (colors[g] == pic[j + 1]) && (colors[b] == pic[j + 2]))
+                 if ((r == pic[j]) && (g == pic[j + 1]) && (b == pic[j + 2]))
                 {
 
 #pragma omp critical

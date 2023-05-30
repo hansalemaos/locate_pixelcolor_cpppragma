@@ -6,7 +6,8 @@ dllpath = os.path.normpath(os.path.join(os.path.dirname(__file__),cppfile))
 lib = ctypes.CDLL(dllpath)
 cpp_function = "colorsearch"
 colorsearch = lib.__getattr__(cpp_function)
-
+cpp_function2 = "colorsearch2"
+colorsearch2 = lib.__getattr__(cpp_function2)
 cppcode = r"""
 #include <omp.h>
 #include <atomic>  
@@ -15,7 +16,45 @@ int create_id() {
     return value++;
     }
 
-extern "C" __declspec(dllexport) void colorsearch(char *pic, char *colors, int width, int totallengthpic, int totallengthcolor, int *outputx, int *outputy, int *lastresult)
+
+extern "C" __declspec(dllexport) void colorsearch(unsigned char *pic, unsigned char *colors, int width, int totallengthpic, int totallengthcolor, int *outputx, int *outputy, int *lastresult)
+{
+    value = 0;
+    int counter = 0;
+
+#pragma omp parallel reduction(+ : counter)
+    {
+
+
+        for (int i = 0; i <= totallengthcolor; i += 3)
+        {
+            int r = colors[i];
+            int g = colors[i + 1];
+            int b = colors[i + 2];
+#pragma omp for schedule(static)            
+            for (int j = 0; j <= totallengthpic; j += 3)
+            {
+                if ((r == pic[j]) && (g == pic[j + 1]) && (b == pic[j + 2]))
+                {
+
+#pragma omp critical
+                    {
+                        int dividend = j / 3;
+                        int quotient = dividend / width;
+                        int remainder = dividend % width;
+                        int upcounter = create_id();
+                        outputx[upcounter] = quotient;
+                        outputy[upcounter] = remainder;
+                        lastresult[0] = upcounter;
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+extern "C" __declspec(dllexport) void colorsearch2(unsigned char *pic, unsigned char *colors, int width, int totallengthpic, int totallengthcolor, int *outputx, int *outputy, int *lastresult)
 {
     value=0;
     int counter = 0;
@@ -27,12 +66,12 @@ extern "C" __declspec(dllexport) void colorsearch(char *pic, char *colors, int w
 #pragma omp for schedule(static)
         for (int i = 0; i <= totallengthcolor; i += 3)
         {
-            int r = i;
-            int g = i + 1;
-            int b = i + 2;
+        int r = colors[i];
+        int g = colors[i + 1];
+        int b = colors[i + 2];
             for (int j = 0; j <= totallengthpic; j += 3)
             {
-                if ((colors[r] == pic[j]) && (colors[g] == pic[j + 1]) && (colors[b] == pic[j + 2]))
+                 if ((r == pic[j]) && (g == pic[j + 1]) && (b == pic[j + 2]))
                 {
 
 #pragma omp critical
@@ -101,15 +140,26 @@ print(resus1)
     outputyb = outputy.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
     endresultsb = endresults.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
     widthb = ctypes.c_int(width)
-
-    colorsearch(
-        picb,
-        colorsb,
-        widthb,
-        totallengthpicb,
-        totallengthcolorcb,
-        outputxb,
-        outputyb,
-        endresultsb,
-    )
+    if totallengthcolor == 2:
+        colorsearch(
+            picb,
+            colorsb,
+            widthb,
+            totallengthpicb,
+            totallengthcolorcb,
+            outputxb,
+            outputyb,
+            endresultsb,
+        )
+    else:
+        colorsearch2(
+            picb,
+            colorsb,
+            widthb,
+            totallengthpicb,
+            totallengthcolorcb,
+            outputxb,
+            outputyb,
+            endresultsb,
+        )
     return np.dstack([outputx[:endresults[0]+1], outputy[:endresults[0]+1]])[0]
